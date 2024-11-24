@@ -148,4 +148,4 @@ jobs:
         with:
           name: sfa-${{env.VERSION}}-universal
           path: sfa/app/build/outputs/apk/other/release/*-universal-signed.apk
-          compression-level: 9
+          compression-level: 9 
