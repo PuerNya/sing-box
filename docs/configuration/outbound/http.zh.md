@@ -15,6 +15,7 @@
   "headers": {},
   "tls": {},
   "use_h3": false,
+  "udp_over_tcp": false | {},
 
   ... // 拨号字段
 }
@@ -57,6 +58,12 @@ TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#outbound)。
 #### use_h3
 
 使用 HTTP3 协议。
+
+#### udp_over_tcp
+
+UDP over TCP 配置。
+
+参阅 [UDP Over TCP](/zh/configuration/shared/udp-over-tcp/)。
 
 ### 拨号字段
 

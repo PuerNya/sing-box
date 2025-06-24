@@ -15,6 +15,7 @@
   "headers": {},
   "tls": {},
   "use_h3": false,
+  "udp_over_tcp": false | {},
   
   ... // Dial Fields
 }
@@ -57,6 +58,12 @@ TLS configuration, see [TLS](/configuration/shared/tls/#outbound).
 #### use_h3
 
 Use HTTP3 protocol.
+
+#### udp_over_tcp
+
+UDP over TCP configuration.
+
+See [UDP Over TCP](/configuration/shared/udp-over-tcp/) for details.
 
 ### Dial Fields
 

@@ -19,7 +19,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func (h *Outbound) newRequest(destination M.Socksaddr) (*http.Request, error) {
+func (h *httpDialer) newRequest(destination M.Socksaddr) (*http.Request, error) {
 	request := &http.Request{
 		Method: http.MethodConnect,
 		Header: http.Header{},
@@ -51,7 +51,7 @@ func (h *Outbound) newRequest(destination M.Socksaddr) (*http.Request, error) {
 	return request, nil
 }
 
-func (h *Outbound) handleHTTP1(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
+func (h *httpDialer) handleHTTP1(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
 	request, err := h.newRequest(destination)
 	request.URL.Scheme = "http"
 	if err != nil {
@@ -77,7 +77,7 @@ func (h *Outbound) handleHTTP1(conn net.Conn, destination M.Socksaddr) (net.Conn
 	return conn, nil
 }
 
-func (h *Outbound) dialHTTP1(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+func (h *httpDialer) dialHTTP1(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	conn, err := h.dialer.DialContext(ctx, network, h.server)
 	if err != nil {
 		return nil, err
@@ -91,7 +91,7 @@ type client struct {
 	sync.Mutex
 }
 
-func (h *Outbound) dialTLSContext(ctx context.Context, network string) (tls.Conn, error) {
+func (h *httpDialer) dialTLSContext(ctx context.Context, network string) (tls.Conn, error) {
 	conn, err := h.dialer.DialContext(ctx, network, h.server)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (h *Outbound) dialTLSContext(ctx context.Context, network string) (tls.Conn
 	return tls.ClientHandshake(ctx, conn, h.tlsConfig)
 }
 
-func (h *Outbound) handleH2(ctx context.Context, roundTripper http.RoundTripper, destination M.Socksaddr) (net.Conn, error) {
+func (h *httpDialer) handleH2(ctx context.Context, roundTripper http.RoundTripper, destination M.Socksaddr) (net.Conn, error) {
 	pipeInReader, pipeInWriter := io.Pipe()
 	request, err := h.newRequest(destination)
 	request.URL.Scheme = "https"
@@ -122,7 +122,7 @@ func (h *Outbound) handleH2(ctx context.Context, roundTripper http.RoundTripper,
 	return conn, nil
 }
 
-func (h *Outbound) dialH2(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+func (h *httpDialer) dialH2(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	h.h2.Lock()
 	if !h.h2.checked {
 		conn, err := h.dialTLSContext(ctx, network)
