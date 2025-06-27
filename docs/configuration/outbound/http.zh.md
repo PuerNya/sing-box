@@ -14,6 +14,7 @@
   "path": "",
   "headers": {},
   "tls": {},
+  "use_h3": false,
 
   ... // 拨号字段
 }
@@ -52,6 +53,10 @@ HTTP 请求的额外标头。
 #### tls
 
 TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#outbound)。
+
+#### use_h3
+
+使用 HTTP3 协议。
 
 ### 拨号字段
 

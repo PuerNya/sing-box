@@ -14,6 +14,7 @@
   "path": "",
   "headers": {},
   "tls": {},
+  "use_h3": false,
   
   ... // Dial Fields
 }
@@ -52,6 +53,10 @@ Extra headers of HTTP request.
 #### tls
 
 TLS configuration, see [TLS](/configuration/shared/tls/#outbound).
+
+#### use_h3
+
+Use HTTP3 protocol.
 
 ### Dial Fields
 

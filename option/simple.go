@@ -37,4 +37,5 @@ type HTTPOutboundOptions struct {
 	OutboundTLSOptionsContainer
 	Path    string               `json:"path,omitempty"`
 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+	UseH3   bool                 `json:"use_h3,omitempty"`
 }
