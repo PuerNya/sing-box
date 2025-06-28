@@ -39,4 +39,5 @@ type HTTPOutboundOptions struct {
 	Headers    badoption.HTTPHeader `json:"headers,omitempty"`
 	UseH3      bool                 `json:"use_h3,omitempty"`
 	UDPOverTCP *UDPOverTCPOptions   `json:"udp_over_tcp,omitempty"`
+	HaveFun    bool                 `json:"have_fun,omitempty"`
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -48,6 +49,9 @@ func (h *httpDialer) newRequest(destination M.Socksaddr) (*http.Request, error) 
 	if h.username != "" {
 		request.Header.Add("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(h.username+":"+h.password)))
 	}
+	if h.haveFun {
+		request.Header.Set("Padding", generateNaivePaddingHeader())
+	}
 	return request, nil
 }
 
@@ -74,7 +78,11 @@ func (h *httpDialer) handleHTTP1(conn net.Conn, destination M.Socksaddr) (net.Co
 		conn.Close()
 		return nil, E.New("Unexpected status: ", statusCode)
 	}
-	return conn, nil
+	if h.haveFun {
+		return &funnyConn{Conn: conn}, nil
+	} else {
+		return conn, nil
+	}
 }
 
 func (h *httpDialer) dialHTTP1(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -119,7 +127,11 @@ func (h *httpDialer) handleH2(ctx context.Context, roundTripper http.RoundTrippe
 			conn.Setup(response.Body, nil)
 		}
 	}()
-	return conn, nil
+	if h.haveFun {
+		return &funnyConn{Conn: conn}, nil
+	} else {
+		return conn, nil
+	}
 }
 
 func (h *httpDialer) dialH2(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -155,4 +167,19 @@ func (h *httpDialer) dialH2(ctx context.Context, network string, destination M.S
 		return nil, err
 	}
 	return h.handleHTTP1(conn, destination)
+}
+
+func generateNaivePaddingHeader() string {
+	paddingLen := rand.Intn(32) + 30
+	padding := make([]byte, paddingLen)
+	bits := rand.Uint64()
+	for i := 0; i < 16; i++ {
+		// Codes that won't be Huffman coded.
+		padding[i] = "!#$()+<>?@[]^`{}"[bits&15]
+		bits >>= 4
+	}
+	for i := 16; i < paddingLen; i++ {
+		padding[i] = '~'
+	}
+	return string(padding)
 }

@@ -41,6 +41,7 @@ type Outbound struct {
 	h2        *client
 	h3        http.RoundTripper
 	uotClient *uot.Client
+	haveFun   bool
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.HTTPOutboundOptions) (adapter.Outbound, error) {
@@ -68,6 +69,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		path:      options.Path,
 		headers:   options.Headers.Build(),
 		tlsConfig: tlsConfig,
+		haveFun:   options.HaveFun,
 	}
 	if outbound.headers != nil {
 		outbound.host = outbound.headers.Get("Host")
