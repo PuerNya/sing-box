@@ -16,22 +16,6 @@ import (
 	aTLS "github.com/sagernet/sing/common/tls"
 )
 
-func NewDialerFromOptions(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, serverAddress string, options option.OutboundTLSOptions) (N.Dialer, error) {
-	if !options.Enabled {
-		return dialer, nil
-	}
-	config, err := NewClientWithOptions(ClientOptions{
-		Context:       ctx,
-		Logger:        logger,
-		ServerAddress: serverAddress,
-		Options:       options,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return NewDialer(dialer, config), nil
-}
-
 func NewClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
 	return NewClientWithOptions(ClientOptions{
 		Context:       ctx,

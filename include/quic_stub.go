@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	sHTTP "github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/naive"
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing/common/logger"
@@ -59,6 +60,9 @@ func registerQUICOutbounds(registry *outbound.Registry) {
 	outbound.Register[option.Hysteria2OutboundOptions](registry, C.TypeHysteria2, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.Hysteria2OutboundOptions) (adapter.Outbound, error) {
 		return nil, C.ErrQUICNotIncluded
 	})
+	sHTTP.ConfigureHTTP3RoundTripper = func(dialer N.Dialer, serverAddress M.Socksaddr, tlsConfig tls.Config) (http.RoundTripper, error) {
+		return nil, C.ErrQUICNotIncluded
+	}
 }
 
 func registerQUICTransports(registry *dns.TransportRegistry) {
