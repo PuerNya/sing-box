@@ -19,7 +19,13 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func (h *httpDialer) newRequest(destination M.Socksaddr) (*http.Request, error) {
+type client struct {
+	checked   bool
+	transport *http2.Transport
+	sync.Mutex
+}
+
+func (h *httpDialer) NewRequest(destination M.Socksaddr) (*http.Request, error) {
 	request := &http.Request{
 		Method: http.MethodConnect,
 		Header: http.Header{},
@@ -52,12 +58,11 @@ func (h *httpDialer) newRequest(destination M.Socksaddr) (*http.Request, error) 
 }
 
 func (h *httpDialer) handleHTTP1(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
-	request, err := h.newRequest(destination)
-	request.URL.Scheme = "http"
+	request, err := h.NewRequest(destination)
 	if err != nil {
-		conn.Close()
 		return nil, err
 	}
+	request.URL.Scheme = "http"
 	request.Header.Set("Proxy-Connection", "Keep-Alive")
 	err = request.Write(conn)
 	if err != nil {
@@ -89,12 +94,6 @@ func (h *httpDialer) dialHTTP1(ctx context.Context, network string, destination 
 	return h.handleHTTP1(conn, destination)
 }
 
-type client struct {
-	checked   bool
-	transport *http2.Transport
-	sync.Mutex
-}
-
 func (h *httpDialer) dialTLSContext(ctx context.Context, network string) (tls.Conn, error) {
 	conn, err := h.dialer.DialContext(ctx, network, h.server)
 	if err != nil {
@@ -103,17 +102,17 @@ func (h *httpDialer) dialTLSContext(ctx context.Context, network string) (tls.Co
 	return tls.ClientHandshake(ctx, conn, h.tlsConfig)
 }
 
-func (h *httpDialer) handleH2(ctx context.Context, roundTripper http.RoundTripper, destination M.Socksaddr) (net.Conn, error) {
-	pipeInReader, pipeInWriter := io.Pipe()
-	request, err := h.newRequest(destination)
-	request.URL.Scheme = "https"
+func (h *httpDialer) handleH2(ctx context.Context, destination M.Socksaddr) (net.Conn, error) {
+	request, err := h.NewRequest(destination)
 	if err != nil {
-		return nil, E.Cause(err, "new request")
+		return nil, err
 	}
+	pipeInReader, pipeInWriter := io.Pipe()
+	request.URL.Scheme = "https"
 	request.Body = pipeInReader
 	conn := v2rayhttp.NewLateHTTPConn(pipeInWriter)
 	go func() {
-		response, err := roundTripper.RoundTrip(request.WithContext(ctx))
+		response, err := h.h2.transport.RoundTrip(request.WithContext(ctx))
 		if err != nil {
 			conn.Setup(nil, err)
 		} else if response.StatusCode != 200 {
@@ -148,11 +147,11 @@ func (h *httpDialer) dialH2(ctx context.Context, network string, destination M.S
 		if err != nil {
 			conn.Close()
 		}
-		return h.handleH2(ctx, h.h2.transport, destination)
+		return h.handleH2(ctx, destination)
 	}
 	h.h2.Unlock()
 	if h.h2.transport != nil {
-		return h.handleH2(ctx, h.h2.transport, destination)
+		return h.handleH2(ctx, destination)
 	}
 	conn, err := h.dialTLSContext(ctx, network)
 	if err != nil {

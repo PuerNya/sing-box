@@ -60,7 +60,7 @@ func registerQUICOutbounds(registry *outbound.Registry) {
 	outbound.Register[option.Hysteria2OutboundOptions](registry, C.TypeHysteria2, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.Hysteria2OutboundOptions) (adapter.Outbound, error) {
 		return nil, C.ErrQUICNotIncluded
 	})
-	sHTTP.ConfigureHTTP3RoundTripper = func(dialer N.Dialer, serverAddress M.Socksaddr, tlsConfig tls.Config) (http.RoundTripper, error) {
+	sHTTP.ConfigureHTTP3Dialer = func(dialer N.Dialer, serverAddress M.Socksaddr, tlsConfig tls.Config, factor sHTTP.RequsetFactor) (N.Dialer, error) {
 		return nil, C.ErrQUICNotIncluded
 	}
 }

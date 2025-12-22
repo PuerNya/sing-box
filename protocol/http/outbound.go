@@ -21,7 +21,11 @@ import (
 	"github.com/sagernet/sing/common/uot"
 )
 
-var ConfigureHTTP3RoundTripper func(dialer N.Dialer, serverAddress M.Socksaddr, tlsConfig tls.Config) (http.RoundTripper, error)
+var ConfigureHTTP3Dialer func(dialer N.Dialer, serverAddress M.Socksaddr, tlsConfig tls.Config, factor RequsetFactor) (N.Dialer, error)
+
+type RequsetFactor interface {
+	NewRequest(destination M.Socksaddr) (*http.Request, error)
+}
 
 func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.HTTPOutboundOptions](registry, C.TypeHTTP, NewOutbound)
@@ -39,7 +43,7 @@ type Outbound struct {
 	headers   http.Header
 	tlsConfig tls.Config
 	h2        *client
-	h3        http.RoundTripper
+	h3Dialer  N.Dialer
 	uotClient *uot.Client
 }
 
@@ -74,11 +78,11 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		outbound.headers.Del("Host")
 	}
 	if options.UseH3 {
-		transport, err := ConfigureHTTP3RoundTripper(outbound.dialer, outbound.server, outbound.tlsConfig)
+		h3Dialer, err := ConfigureHTTP3Dialer(outbound.dialer, outbound.server, outbound.tlsConfig, (*httpDialer)(outbound))
 		if err != nil {
 			return nil, err
 		} else {
-			outbound.h3 = transport
+			outbound.h3Dialer = h3Dialer
 		}
 	} else if tlsConfig != nil {
 		outbound.h2 = &client{}
@@ -103,8 +107,6 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 		if h.uotClient != nil {
 			h.logger.InfoContext(ctx, "outbound UoT connect packet connection to ", destination)
 			return h.uotClient.DialContext(ctx, network, destination)
-		} else {
-			return nil, os.ErrInvalid
 		}
 	}
 	return (*httpDialer)(h).DialContext(ctx, network, destination)
@@ -115,7 +117,7 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 		h.logger.InfoContext(ctx, "outbound UoT packet connection to ", destination)
 		return h.uotClient.ListenPacket(ctx, destination)
 	}
-	return nil, os.ErrInvalid
+	return (*httpDialer)(h).ListenPacket(ctx, destination)
 }
 
 var _ N.Dialer = (*httpDialer)(nil)
@@ -131,11 +133,15 @@ func (h *httpDialer) DialContext(ctx context.Context, network string, destinatio
 		if h.tlsConfig == nil {
 			return h.dialHTTP1(ctx, network, destination)
 		}
-		if h.h3 != nil {
-			return h.handleH2(ctx, h.h3, destination)
+		if h.h3Dialer != nil {
+			return h.h3Dialer.DialContext(ctx, network, destination)
 		}
 		return h.dialH2(ctx, network, destination)
 	case N.NetworkUDP:
+		if h.h3Dialer != nil {
+			h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+			return h.h3Dialer.DialContext(ctx, network, destination)
+		}
 		return nil, os.ErrInvalid
 	default:
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
@@ -143,5 +149,9 @@ func (h *httpDialer) DialContext(ctx context.Context, network string, destinatio
 }
 
 func (h *httpDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	if h.h3Dialer == nil {
+		h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+		return h.h3Dialer.ListenPacket(ctx, destination)
+	}
 	return nil, os.ErrInvalid
 }
