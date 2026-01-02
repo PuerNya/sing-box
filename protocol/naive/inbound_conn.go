@@ -176,6 +176,14 @@ type naiveConn struct {
 	paddingConn
 }
 
+func NewPaddingConn(conn net.Conn, noPadding bool) net.Conn {
+	if noPadding {
+		return conn
+	} else {
+		return &naiveConn{Conn: conn}
+	}
+}
+
 func (c *naiveConn) Read(p []byte) (n int, err error) {
 	n, err = c.readWithPadding(c.Conn, p)
 	return n, baderror.WrapH2(err)

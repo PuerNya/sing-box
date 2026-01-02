@@ -2,20 +2,19 @@ package quic
 
 import (
 	"io"
-	"net/http"
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/protocol/naive"
-	"github.com/sagernet/sing-quic"
+	qtls "github.com/sagernet/sing-quic"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 )
 
 func init() {
-	naive.ConfigureHTTP3ListenerFunc = func(listener *listener.Listener, handler http.Handler, tlsConfig tls.ServerConfig, logger logger.Logger) (io.Closer, error) {
+	naive.ConfigureHTTP3ListenerFunc = func(logger logger.Logger, listener *listener.Listener, tlsConfig tls.ServerConfig, handler naive.Handler) (io.Closer, error) {
 		err := qtls.ConfigureHTTP3(tlsConfig)
 		if err != nil {
 			return nil, err
@@ -29,6 +28,7 @@ func init() {
 		quicListener, err := qtls.ListenEarly(udpConn, tlsConfig, &quic.Config{
 			MaxIncomingStreams: 1 << 60,
 			Allow0RTT:          true,
+			EnableDatagrams:    true,
 		})
 		if err != nil {
 			udpConn.Close()
@@ -36,7 +36,8 @@ func init() {
 		}
 
 		h3Server := &http3.Server{
-			Handler: handler,
+			Handler:         newHandler(handler, udpConn.LocalAddr()),
+			EnableDatagrams: true,
 		}
 
 		go func() {
