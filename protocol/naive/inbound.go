@@ -29,10 +29,22 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-var ConfigureHTTP3ListenerFunc func(listener *listener.Listener, handler http.Handler, tlsConfig tls.ServerConfig, logger logger.Logger) (io.Closer, error)
+var ConfigureHTTP3ListenerFunc func(
+	logger logger.Logger,
+	listener *listener.Listener,
+	tlsConfig tls.ServerConfig,
+	handler Handler,
+) (io.Closer, error)
 
 func RegisterInbound(registry *inbound.Registry) {
 	inbound.Register[option.NaiveInboundOptions](registry, C.TypeNaive, NewInbound)
+}
+
+type Handler interface {
+	NewConnection(ctx context.Context, waitForClose bool, conn net.Conn, userName string, source M.Socksaddr, destination M.Socksaddr)
+	NewPacketConnection(ctx context.Context, conn N.PacketConn, userName string, source M.Socksaddr, destination M.Socksaddr)
+	Authorization(ctx context.Context, request *http.Request) (string, bool, bool)
+	BadRequest(ctx context.Context, request *http.Request, err error)
 }
 
 type Inbound struct {
@@ -44,6 +56,7 @@ type Inbound struct {
 	network          []string
 	networkIsDefault bool
 	authenticator    *auth.Authenticator
+	acceptH3         bool
 	tlsConfig        tls.ServerConfig
 	httpServer       *http.Server
 	h3Server         io.Closer
@@ -62,15 +75,10 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		}),
 		networkIsDefault: options.Network == "",
 		network:          options.Network.Build(),
-		authenticator:    auth.NewAuthenticator(options.Users),
 	}
-	if common.Contains(inbound.network, N.NetworkUDP) {
-		if options.TLS == nil || !options.TLS.Enabled {
-			return nil, E.New("TLS is required for QUIC server")
-		}
-	}
-	if len(options.Users) == 0 {
-		return nil, E.New("missing users")
+	inbound.acceptH3 = common.Contains(inbound.network, N.NetworkUDP) && options.TLS == nil && options.TLS.Enabled
+	if len(options.Users) > 0 {
+		inbound.authenticator = auth.NewAuthenticator(options.Users)
 	}
 	if options.TLS != nil {
 		tlsConfig, err := tls.NewServer(ctx, logger, common.PtrValueOrDefault(options.TLS))
@@ -78,6 +86,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			return nil, err
 		}
 		inbound.tlsConfig = tlsConfig
+		inbound.acceptH3 = common.Contains(inbound.network, N.NetworkUDP) && tlsConfig != nil
 	}
 	return inbound, nil
 }
@@ -120,8 +129,8 @@ func (n *Inbound) Start(stage adapter.StartStage) error {
 		}()
 	}
 
-	if common.Contains(n.network, N.NetworkUDP) {
-		http3Server, err := ConfigureHTTP3ListenerFunc(n.listener, n, n.tlsConfig, n.logger)
+	if n.acceptH3 {
+		http3Server, err := ConfigureHTTP3ListenerFunc(n.logger, n.listener, n.tlsConfig, n)
 		if err == nil {
 			n.h3Server = http3Server
 		} else if len(n.network) > 1 {
@@ -145,56 +154,46 @@ func (n *Inbound) Close() error {
 
 func (n *Inbound) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	ctx := log.ContextWithNewID(request.Context())
-	if request.Method != "CONNECT" {
-		rejectHTTP(writer, http.StatusBadRequest)
-		n.badRequest(ctx, request, E.New("not CONNECT request"))
-		return
-	} else if request.Header.Get("Padding") == "" {
-		rejectHTTP(writer, http.StatusBadRequest)
-		n.badRequest(ctx, request, E.New("missing naive padding"))
+	if request.Method != http.MethodConnect {
+		RejectHTTP(writer, http.StatusBadRequest)
+		n.BadRequest(ctx, request, E.New("not CONNECT request"))
 		return
 	}
-	userName, password, authOk := sHttp.ParseBasicAuth(request.Header.Get("Proxy-Authorization"))
-	if authOk {
-		authOk = n.authenticator.Verify(userName, password)
-	}
+	userName, noPadding, authOk := n.Authorization(ctx, request)
 	if !authOk {
-		rejectHTTP(writer, http.StatusProxyAuthRequired)
-		n.badRequest(ctx, request, E.New("authorization failed"))
+		RejectHTTP(writer, http.StatusProxyAuthRequired)
+		n.BadRequest(ctx, request, E.New("authorization failed"))
 		return
 	}
-	writer.Header().Set("Padding", generatePaddingHeader())
-	writer.WriteHeader(http.StatusOK)
-	writer.(http.Flusher).Flush()
 
-	hostPort := request.Header.Get("-connect-authority")
-	if hostPort == "" {
-		hostPort = request.URL.Host
-		if hostPort == "" {
-			hostPort = request.Host
-		}
-	}
-	source := sHttp.SourceAddress(request)
-	destination := M.ParseSocksaddr(hostPort).Unwrap()
+	AcceptHTTP(writer, noPadding)
 
-	if hijacker, isHijacker := writer.(http.Hijacker); isHijacker {
-		conn, _, err := hijacker.Hijack()
+	source, destination := GetSrcDest(request)
+
+	var conn net.Conn
+	hijacker, isHijacker := writer.(http.Hijacker)
+	if isHijacker {
+		var err error
+		conn, _, err = hijacker.Hijack()
 		if err != nil {
-			n.badRequest(ctx, request, E.New("hijack failed"))
+			n.BadRequest(ctx, request, E.New("hijack failed"))
 			return
 		}
-		n.newConnection(ctx, false, &naiveConn{Conn: conn}, userName, source, destination)
+		conn = NewPaddingConn(conn, noPadding)
+	} else if noPadding {
+		conn = &v2rayhttp.ServerHTTPConn{HTTP2Conn: v2rayhttp.NewHTTPConn(request.Body, writer), Flusher: writer.(http.Flusher)}
 	} else {
-		n.newConnection(ctx, true, &naiveH2Conn{
+		conn = &naiveH2Conn{
 			reader:        request.Body,
 			writer:        writer,
 			flusher:       writer.(http.Flusher),
 			remoteAddress: source,
-		}, userName, source, destination)
+		}
 	}
+	n.NewConnection(ctx, !isHijacker, conn, userName, source, destination)
 }
 
-func (n *Inbound) newConnection(ctx context.Context, waitForClose bool, conn net.Conn, userName string, source M.Socksaddr, destination M.Socksaddr) {
+func (n *Inbound) NewConnection(ctx context.Context, waitForClose bool, conn net.Conn, userName string, source M.Socksaddr, destination M.Socksaddr) {
 	if userName != "" {
 		n.logger.InfoContext(ctx, "[", userName, "] inbound connection from ", source)
 		n.logger.InfoContext(ctx, "[", userName, "] inbound connection to ", destination)
@@ -226,11 +225,50 @@ func (n *Inbound) newConnection(ctx context.Context, waitForClose bool, conn net
 	}
 }
 
-func (n *Inbound) badRequest(ctx context.Context, request *http.Request, err error) {
+func (n *Inbound) NewPacketConnection(ctx context.Context, conn N.PacketConn, userName string, source M.Socksaddr, destination M.Socksaddr) {
+	if userName != "" {
+		n.logger.InfoContext(ctx, "[", userName, "] inbound packet connection from ", source)
+		n.logger.InfoContext(ctx, "[", userName, "] inbound packet connection to ", destination)
+	} else {
+		n.logger.InfoContext(ctx, "inbound packet connection from ", source)
+		n.logger.InfoContext(ctx, "inbound packet connection to ", destination)
+	}
+	var metadata adapter.InboundContext
+	metadata.Inbound = n.Tag()
+	metadata.InboundType = n.Type()
+	//nolint:staticcheck
+	metadata.InboundDetour = n.listener.ListenOptions().Detour
+	//nolint:staticcheck
+	metadata.InboundOptions = n.listener.ListenOptions().InboundOptions
+	metadata.Source = source
+	metadata.Destination = destination
+	metadata.OriginDestination = M.SocksaddrFromNet(conn.LocalAddr()).Unwrap()
+	metadata.User = userName
+	n.router.RoutePacketConnectionEx(ctx, conn, metadata, nil)
+}
+
+func (n *Inbound) Authorization(ctx context.Context, request *http.Request) (string, bool, bool) {
+	noPadding := request.Header.Get("Padding") == ""
+	if n.authenticator == nil {
+		return "", noPadding, true
+	}
+	userName, password, authOk := sHttp.ParseBasicAuth(request.Header.Get("Proxy-Authorization"))
+	return userName, noPadding, authOk && n.authenticator.Verify(userName, password)
+}
+
+func (n *Inbound) BadRequest(ctx context.Context, request *http.Request, err error) {
 	n.logger.ErrorContext(ctx, E.Cause(err, "process connection from ", request.RemoteAddr))
 }
 
-func rejectHTTP(writer http.ResponseWriter, statusCode int) {
+func AcceptHTTP(writer http.ResponseWriter, noPadding bool) {
+	if !noPadding {
+		writer.Header().Set("Padding", generatePaddingHeader())
+	}
+	writer.WriteHeader(http.StatusOK)
+	writer.(http.Flusher).Flush()
+}
+
+func RejectHTTP(writer http.ResponseWriter, statusCode int) {
 	hijacker, ok := writer.(http.Hijacker)
 	if !ok {
 		writer.WriteHeader(statusCode)
@@ -245,4 +283,15 @@ func rejectHTTP(writer http.ResponseWriter, statusCode int) {
 		tcpConn.SetLinger(0)
 	}
 	conn.Close()
+}
+
+func GetSrcDest(request *http.Request) (M.Socksaddr, M.Socksaddr) {
+	hostPort := request.Header.Get("-connect-authority")
+	if hostPort == "" {
+		hostPort = request.URL.Host
+		if hostPort == "" {
+			hostPort = request.Host
+		}
+	}
+	return sHttp.SourceAddress(request), M.ParseSocksaddr(hostPort).Unwrap()
 }

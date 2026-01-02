@@ -63,7 +63,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 	outbound := &Outbound{
-		Adapter:   outbound.NewAdapterWithDialerOptions(C.TypeHTTP, tag, []string{N.NetworkTCP}, options.DialerOptions),
+		Adapter:   outbound.NewAdapterWithDialerOptions(C.TypeHTTP, tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
 		logger:    logger,
 		dialer:    detour,
 		server:    options.ServerOptions.Build(),
@@ -149,7 +149,7 @@ func (h *httpDialer) DialContext(ctx context.Context, network string, destinatio
 }
 
 func (h *httpDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	if h.h3Dialer == nil {
+	if h.h3Dialer != nil {
 		h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 		return h.h3Dialer.ListenPacket(ctx, destination)
 	}

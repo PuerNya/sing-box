@@ -137,11 +137,11 @@ func (d *h3Dialer) DialContext(ctx context.Context, network string, destination 
 	conn := connFactor(stream)
 	go func() {
 		if response, err := stream.ReadResponse(); err != nil {
-			stream.Close()
 			conn.Setup(err)
+			conn.Close()
 		} else if statusCode := response.StatusCode; statusCode != http.StatusOK {
-			stream.Close()
 			conn.Setup(E.New("Unexpected status: ", statusCode))
+			conn.Close()
 		} else {
 			conn.Setup(nil)
 		}
@@ -181,11 +181,11 @@ func (d *h3Dialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	conn := newLateBindPacketConn(ctx, stream)
 	go func() {
 		if response, err := stream.ReadResponse(); err != nil {
-			stream.Close()
 			conn.Setup(err)
+			conn.Close()
 		} else if statusCode := response.StatusCode; statusCode != http.StatusOK {
-			stream.Close()
 			conn.Setup(E.New("Unexpected status: ", statusCode))
+			conn.Close()
 		} else {
 			conn.Setup(nil)
 		}
