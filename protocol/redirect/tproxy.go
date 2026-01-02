@@ -32,6 +32,7 @@ type TProxy struct {
 	logger   log.ContextLogger
 	listener *listener.Listener
 	udpNat   *udpnat.Service
+	*autoTProxyOptions
 }
 
 func NewTProxy(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TProxyInboundOptions) (adapter.Inbound, error) {
@@ -47,28 +48,23 @@ func NewTProxy(ctx context.Context, router adapter.Router, logger log.ContextLog
 	} else {
 		udpTimeout = C.UDPTimeout
 	}
+	network := options.Network.Build()
 	tproxy.udpNat = udpnat.New(tproxy, tproxy.preparePacketConnection, udpTimeout, false)
 	tproxy.listener = listener.New(listener.Options{
 		Context:           ctx,
 		Logger:            logger,
-		Network:           options.Network.Build(),
+		Network:           network,
 		Listen:            options.ListenOptions,
 		ConnectionHandler: tproxy,
 		OOBPacketHandler:  tproxy,
 		TProxy:            true,
 	})
-	return tproxy, nil
-}
-
-func (t *TProxy) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateStart {
-		return nil
+	var err error
+	tproxy.autoTProxyOptions, err = newAutoTProxy(ctx, router, options.AutoTProxy, network, M.SocksaddrFrom(options.Listen.Build(netip.AddrFrom4([4]byte{127, 0, 0, 1})), options.ListenPort))
+	if err != nil {
+		return nil, err
 	}
-	return t.listener.Start()
-}
-
-func (t *TProxy) Close() error {
-	return t.listener.Close()
+	return tproxy, nil
 }
 
 func (t *TProxy) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
