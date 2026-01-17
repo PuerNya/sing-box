@@ -15,6 +15,7 @@ type _V2RayTransportOptions struct {
 	QUICOptions        V2RayQUICOptions        `json:"-"`
 	GRPCOptions        V2RayGRPCOptions        `json:"-"`
 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
+	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -32,6 +33,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP:
+		v = o.XHTTPOptions
 	case "":
 		return nil, E.New("missing transport type")
 	default:
@@ -57,6 +60,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 		v = &o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = &o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP:
+		v = &o.XHTTPOptions
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -97,4 +102,43 @@ type V2RayHTTPUpgradeOptions struct {
 	Host    string               `json:"host,omitempty"`
 	Path    string               `json:"path,omitempty"`
 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+}
+
+type V2RayXHTTPOptions _V2RayXHTTPOptions
+
+type _V2RayXHTTPOptions struct {
+	Path               string               `json:"path,omitempty"`
+	Headers            badoption.HTTPHeader `json:"headers,omitempty"`
+	MaxEachPostBytes   uint64               `json:"max_each_post_bytes,omitempty"`
+	IdleTimeout        badoption.Duration   `json:"idle_timeout,omitempty"`
+	PingTimeout        badoption.Duration   `json:"ping_timeout,omitempty"`
+	ClientHost         string               `json:"client_host,omitempty"`
+	DownloadServer     string               `json:"download_server,omitempty"`
+	DownloadServerPort uint16               `json:"download_server_port,omitempty"`
+	UploadMode         string               `json:"upload_mode,omitempty"`
+	NoGRPCHeader       bool                 `json:"no_grpc_header,omitempty"`
+	NoSSEHeader        bool                 `json:"no_sse_header,omitempty"`
+}
+
+func (o V2RayXHTTPOptions) MarshalJSON() ([]byte, error) {
+	var v any
+	switch o.UploadMode {
+	case "", C.XHTTPUploadModeStreamUp, C.XHTTPUploadModePacketUp, C.XHTTPUploadModeStreamOne:
+		return badjson.MarshallObjects((_V2RayXHTTPOptions)(o), v)
+	default:
+		return nil, E.New("unknown transport type: " + o.UploadMode)
+	}
+}
+
+func (o *V2RayXHTTPOptions) UnmarshalJSON(bytes []byte) error {
+	err := json.Unmarshal(bytes, (*_V2RayXHTTPOptions)(o))
+	if err != nil {
+		return err
+	}
+	switch o.UploadMode {
+	case "", C.XHTTPUploadModeStreamUp, C.XHTTPUploadModePacketUp, C.XHTTPUploadModeStreamOne:
+		return nil
+	default:
+		return E.New("unknown upload mode: " + o.UploadMode)
+	}
 }

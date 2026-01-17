@@ -12,6 +12,7 @@ import (
 	_ "github.com/sagernet/sing-box/protocol/naive/quic"
 	"github.com/sagernet/sing-box/protocol/tuic"
 	_ "github.com/sagernet/sing-box/transport/v2rayquic"
+	_ "github.com/sagernet/sing-box/transport/v2rayxhttp/quic"
 )
 
 func registerQUICInbounds(registry *inbound.Registry) {

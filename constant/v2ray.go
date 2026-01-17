@@ -6,4 +6,13 @@ const (
 	V2RayTransportTypeQUIC        = "quic"
 	V2RayTransportTypeGRPC        = "grpc"
 	V2RayTransportTypeHTTPUpgrade = "httpupgrade"
+	V2RayTransportTypeXHTTP       = "xhttp"
+)
+
+const XHTTPDefaultMaxEachPostBytes = 1000000
+
+const (
+	XHTTPUploadModeStreamUp  = "stream-up"
+	XHTTPUploadModePacketUp  = "packet-up"
+	XHTTPUploadModeStreamOne = "stream-one"
 )

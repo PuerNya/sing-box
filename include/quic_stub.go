@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/inbound"
@@ -18,6 +19,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/naive"
 	"github.com/sagernet/sing-box/transport/v2ray"
+	"github.com/sagernet/sing-box/transport/v2rayxhttp"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -47,6 +49,9 @@ func registerQUICInbounds(registry *inbound.Registry) {
 	naive.ConfigureHTTP3ListenerFunc = func(ctx context.Context, logger logger.Logger, listener *listener.Listener, handler http.Handler, tlsConfig tls.ServerConfig, options option.NaiveInboundOptions) (io.Closer, error) {
 		return nil, C.ErrQUICNotIncluded
 	}
+	v2rayxhttp.ConfigureH3Listener = func(handler http.Handler, tlsConfig tls.ServerConfig) (v2rayxhttp.HTTPServer, error) {
+		return nil, C.ErrQUICNotIncluded
+	}
 }
 
 func registerQUICOutbounds(registry *outbound.Registry) {
@@ -59,6 +64,9 @@ func registerQUICOutbounds(registry *outbound.Registry) {
 	outbound.Register[option.Hysteria2OutboundOptions](registry, C.TypeHysteria2, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.Hysteria2OutboundOptions) (adapter.Outbound, error) {
 		return nil, C.ErrQUICNotIncluded
 	})
+	v2rayxhttp.ConfigureH3Transport = func(dialer N.Dialer, destination M.Socksaddr, tlsConfig tls.Config, idleTimeout time.Duration) (v2rayxhttp.Transport, error) {
+		return nil, C.ErrQUICNotIncluded
+	}
 }
 
 func registerQUICTransports(registry *dns.TransportRegistry) {
